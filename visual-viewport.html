@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Visual Viewport API demo</title>
+</head>
+<body style="background: #cf6; height: 2000px;">
+<div style="position: absolute; right: 20px; top: 30px;">Text field 1:<input></div>
+<div style="position: absolute; right: 20px; top: 800px;">Text field 2:<input></div>
+<div style="position: absolute; right: 20px; top: 1600px;">Text field 3:<input></div>
+<pre id="target" style="box-sizing: border-box; padding: 10px; margin: 0; background-color: #6cf; position: absolute; z-index: -1000; font-size: 20px;"></pre>
+<script>
+
+const target = document.getElementById('target');
+window.visualViewport.addEventListener('resize', update);
+window.visualViewport.addEventListener('scroll', update);
+
+function update() {
+    target.style.top = (visualViewport.pageTop + 10) + 'px';
+    target.style.width = (visualViewport.width - 20) + 'px';
+    target.style.height = (visualViewport.height - 20) + 'px';
+
+    let result = '';
+    const properties = ['width', 'height', 'offsetLeft', 'offsetTop', 'pageLeft', 'pageTop', 'scale'];
+    for (const property of properties)
+        result += `${property}: ${visualViewport[property]}\n`;
+
+    target.textContent = result;
+}
+
+window.onload = update;
+
+</script>
+</body>
+</html>
