@@ -13,9 +13,6 @@ body {
 }
 
 </style>
-<div id="container">
-
-</div>
 <script>
 
 const originalAttahShadow = Element.prototype.attachShadow;
@@ -212,13 +209,22 @@ class TreeViewerElement extends HTMLElement {
 customElements.define('tree-viewer', TreeViewerElement);
 
 </script>
-<tree-viewer><div contenteditable>hello <b>world</b><br></div></tree-viewer>
-<tree-viewer id="user-name-example">Hi <user-name>@rniwa</user-name>,<br>
-<br>
-This is an important message.</tree-viewer>
+<tree-viewer><div contenteditable style="width: 100%; height: 100%;"></div></tree-viewer>
+<tree-viewer>
+    <div contenteditable style="width: 100%; height: 100%;" onclick="this.focus(); document.execCommand('selectAll');">
+        hello <b>world</b><br>
+    </div>
+</tree-viewer>
+<tree-viewer id="user-name-example">
+    <div contenteditable style="width: 100%; height: 100%;" onclick="this.focus(); document.execCommand('selectAll');">
+        Hi <user-name>rniwa</user-name>,<br>
+        <br>
+        This is an important message.
+    </div>
+</tree-viewer>
 <script>
 
-document.querySelector('#user-name-example user-name').attachShadow({mode: 'open'}).innerHTML = `<div><slot></slot></div><style>
+document.querySelector('#user-name-example user-name').attachShadow({mode: 'open'}).innerHTML = `<div>@<slot></slot></div><style>
 div {
     display: inline-block;
     border-radius: 0.2rem;
