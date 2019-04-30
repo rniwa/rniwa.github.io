@@ -16,6 +16,7 @@ window.visualViewport.addEventListener('resize', update);
 window.visualViewport.addEventListener('scroll', update);
 
 function update() {
+    target.style.left = (visualViewport.pageLeft + 10) + 'px';
     target.style.top = (visualViewport.pageTop + 10) + 'px';
     target.style.width = (visualViewport.width - 20) + 'px';
     target.style.height = (visualViewport.height - 20) + 'px';
