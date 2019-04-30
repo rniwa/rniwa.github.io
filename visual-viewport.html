@@ -2,32 +2,40 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Visual Viewport API demo</title>
 </head>
 <body>
-<div class="textfield-container" style="top: 1rem;">Text field 1:<input></div>
-<div class="textfield-container" style="top: calc(400px + 1rem);">Text field 2:<input></div>
-<div class="textfield-container" style="top: calc(800px + 1rem);">Text field 2:<input></div>
-<div class="textfield-container" style="top: calc(1200px + 1rem);">Text field 2:<input></div>
-<div class="textfield-container" style="top: calc(1600px + 1rem);">Text field 3:<input></div>
+<div id="container">
+<div class="textfield-container" style="top: 40px;">Text field 1:<input></div>
+<div class="textfield-container" style="top: calc(400px + 40px);">Text field 2:<input></div>
+<div class="textfield-container" style="top: calc(800px + 40px);">Text field 3:<input></div>
+<div class="textfield-container" style="top: calc(1200px + 40px);">Text field 4:<input></div>
+<div class="textfield-container" style="top: calc(1600px + 40px);">Text field 5:<input></div>
+</div>
 <pre id="target"></pre>
 <style>
 
 html, body {
     padding: 0;
     margin: 0;
+    width: 100%;
+    height: 100%;
 }
 
 body {
     background: white;
     background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="100%" height="100%" fill="transparent" stroke="black"/></svg>');
-    overflow: hidden;
+}
+
+#container {
+    position: relative;
+    width: 100%;
+    height: 2000px;
 }
 
 .textfield-container {
     position: absolute;
-    right: 1rem;
+    right: 40px;
 }
 
 #target {
@@ -48,10 +56,10 @@ window.visualViewport.addEventListener('resize', update);
 window.visualViewport.addEventListener('scroll', update);
 
 function update() {
-    target.style.left = (visualViewport.pageLeft + 10) + 'px';
-    target.style.top = (visualViewport.pageTop + 10) + 'px';
-    target.style.width = (visualViewport.width - 20) + 'px';
-    target.style.height = (visualViewport.height - 20) + 'px';
+    target.style.left = (visualViewport.pageLeft + 30) + 'px';
+    target.style.top = (visualViewport.pageTop + 30) + 'px';
+    target.style.width = (visualViewport.width - 60) + 'px';
+    target.style.height = (visualViewport.height - 60) + 'px';
 
     let result = '';
     const properties = ['width', 'height', 'offsetLeft', 'offsetTop', 'pageLeft', 'pageTop', 'scale'];
