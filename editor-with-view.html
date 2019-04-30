@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editing demo</title>
+</head>
+<body>
+<style>
+
+body {
+    font-family: sans-serif;
+}
+
+</style>
+<div id="container">
+
+</div>
+<script>
+
+const originalAttahShadow = Element.prototype.attachShadow;
+const hiddenShadowMap = new WeakMap;
+Element.prototype.attachShadow = function (mode) {
+    const shadowRoot = originalAttahShadow.call(this, mode);
+    hiddenShadowMap.set(this, shadowRoot);
+    this.appendChild(document.createElement('span')).remove(); // A dummy DOM change.
+    return shadowRoot;
+}
+
+class TreeViewerElement extends HTMLElement {
+    constructor()
+    {
+        super();
+        const shadowRoot = this.attachShadow({mode: 'closed'});
+        shadowRoot.innerHTML = TreeViewerElement._template();
+
+        const contentView = shadowRoot.getElementById('content');
+        const markupView = shadowRoot.getElementById('markup');
+        const treeView = shadowRoot.getElementById('tree');
+        this._setContentEditable = (value) => contentView.setAttribute('contenteditable', value);
+
+        const contentObserver = new MutationObserver(() => {
+            markupView.textContent = this.innerHTML;
+            markupObserver.takeRecords();
+            this._updateTreeView(treeView, this);
+        });
+        contentObserver.observe(this, {childList: true, characterData: true, subtree: true});
+
+        const markupObserver = new MutationObserver(() => {
+            this.innerHTML = markupView.textContent;
+            contentObserver.takeRecords();
+            this._updateTreeView(treeView, this);
+        });
+        markupObserver.observe(markupView, {childList: true, characterData: true, subtree: true});
+    }
+
+    attributeChangedCallback(name, oldValue, newValue)
+    {
+        if (name.toLowerCase() == 'contenteditable')
+            this._setContentEditable(newValue);
+    }
+
+    static get observedAttributes() { return ['contenteditable']; }
+
+    _updateContentView(contentView)
+    {
+        contentView.textContent = '';
+        const clonedContent = Array.from(this.childNodes).map((child) => child.cloneNode(true));
+        contentView.append(...clonedContent);
+    }
+
+    _updateTreeView(treeView, contentView)
+    {
+        treeView.textContent = '';
+        treeView.append(...this._constructViewForTree(contentView));
+    }
+
+    _constructViewForTree(parent)
+    {
+        const list = document.createElement('ul');
+        const shadowRoot = hiddenShadowMap.get(parent);
+        if (shadowRoot && shadowRoot.host != this) {
+            const listItem = document.createElement('li');
+            listItem.append(...this._constructViewForNode(shadowRoot));
+            list.appendChild(listItem);
+        }
+        for (const child of parent.childNodes) {
+            const listItem = document.createElement('li');
+            listItem.append(...this._constructViewForNode(child));
+            list.appendChild(listItem);
+        }
+        return [list];
+    }
+
+    _constructViewForNode(node)
+    {
+        switch (node.nodeType) {
+        case Node.ELEMENT_NODE: {
+            const span = document.createElement('span');
+            span.className = 'element';
+            span.textContent = node.localName;
+            return [span].concat(this._constructViewForTree(node));
+        }
+        case Node.TEXT_NODE: {
+            const span = document.createElement('span');
+            span.className = 'text';
+            span.textContent = node.data;
+            return ['#"', span, '"'];
+        }
+        case Node.DOCUMENT_FRAGMENT_NODE:
+        if (node instanceof ShadowRoot) {
+            const span = document.createElement('span');
+            span.className = 'shadowroot';
+            span.textContent = 'shadow root';
+            return [span].concat(this._constructViewForTree(node));
+        }
+        case Node.CDATA_SECTION_NODE:
+        case Node.PROCESSING_INSTRUCTION_NODE:
+        case Node.COMMENT_NODE:
+        case Node.DOCUMENT_NODE:
+        case Node.DOCUMENT_TYPE_NODE:
+            return ['Not implemented'];
+        }
+    }
+
+    static _template()
+    {
+        return `
+<style>
+
+:host {
+    display: block;
+    display: flex;
+    outline: none;
+}
+
+#content {
+    display: block;
+    flex: 1;
+    padding: 0.5rem;
+    margin: 0.5rem;
+    border: solid 2px transparent;
+}
+
+#content:not(:focus) {
+    border: solid 2px #eee;
+}
+
+#view {
+    flex: 1;
+    border: solid 2px transparent;
+    outline: none;
+    padding: 0.5rem;
+    font-family: monospace;
+}
+
+#tree {
+    padding-top: 0.5rem;
+    border-top: solid 1px #333;
+    margin-top: 0.5rem;
+}
+
+#tree ul {
+    margin: 0;
+    padding: 0;
+}
+
+#tree li {
+    position: relative;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-left: solid 2px #333;
+    padding-left: 1rem;
+}
+
+#tree li::before {
+    content: ' ';
+    position: absolute;
+    top: calc(0.5rem - 2px);
+    left: -2px;
+    border-top: solid 2px #333;
+    width: 12px;
+}
+
+#tree li:last-child::before {
+    background: white;
+    height: 0.5rem;
+}
+
+#tree .element {
+    font-weight: bold;
+}
+
+#tree .text {
+    background-color: #eee;
+}
+
+#tree .shadowroot {
+    color: blue;
+}
+
+</style>
+<slot id="content"></slot>
+<div id="view">
+    <div id="markup" contenteditable="plaintext-only"></div>
+    <div id="tree"></div>
+</div>`;
+    }
+}
+
+customElements.define('tree-viewer', TreeViewerElement);
+
+</script>
+<tree-viewer><div contenteditable>hello <b>world</b><br></div></tree-viewer>
+<tree-viewer id="user-name-example">Hi <user-name>@rniwa</user-name>,<br>
+<br>
+This is an important message.</tree-viewer>
+<script>
+
+document.querySelector('#user-name-example user-name').attachShadow({mode: 'open'}).innerHTML = `<div><slot></slot></div><style>
+div {
+    display: inline-block;
+    border-radius: 0.2rem;
+    padding: 0.2rem;
+    font-size: 0.9rem;
+    background: #eee;
+    font-weight: bold;
+}
+</style>`;
+
+</script>    
+</body>
+</html>
