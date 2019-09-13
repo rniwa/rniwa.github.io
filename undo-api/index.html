@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <title>Undo API</title>
+    <script src='https://www.w3.org/Tools/respec/respec-w3c' async class='remove'></script>
+    <script class='remove'>
+      var respecConfig = {
+        specStatus: "ED",
+        shortName: "undo-api",
+        editors: [
+          {
+            name: "Ryosuke Niwa",
+            mailto: "rniwa@apple.com",
+            company: "Apple Inc.",
+            companyURL: "https://www.apple.com/",
+            w3cid: "49910",
+          },
+        ],
+        xref: "web-platform",
+      };
+    </script>
+  </head>
+  <body>
+    <section id='abstract'>
+      <p>
+        This document is a preliminary draft of a specification for the Undo API.
+        It is based on and supercedes the <a href="https://dvcs.w3.org/hg/undomanager/raw-file/tip/undomanager.html">
+        Undo Manager and DOM transaction</a> specification.
+      </p>
+      <p>
+        This document defines APIs for registering undoable and redoable actions with the user agent,
+        and how those actions are invoked by the user agent.
+      </p>
+    </section>
+    <section id='sotd'>
+      <p>
+        This is work in progress.
+      </p>
+    </section>
+    <section class="informative">
+      <h2>Introduction</h2>
+      <p>
+        Many rich text editors on the Web add editing operations that are not natively supported
+        by execCommand and other Web APIs. For example, many editors make modifications to DOM
+        after an user agent executed user editing actions to work-around user agent bugs
+        and to customize for their use.
+      </p>
+      <p>
+        However, doing so breaks user agent's native undo and redo
+        because the user agent cannot undo DOM modifications made by scripts.
+        This forces the editors to re-implement undo and redo entirely from scratch,
+        and many editors, indeed, store innerHTML as string and recreate the entire editable region
+        whenever a user tires to undo and redo.
+        This is very inefficient and has limited the depth of their <a>undo history</a>.
+      </p>
+      <p>
+        Also, any Web app that tries to mix contenteditable region or text fields with canvas
+        or other non-text editable regions will have to reimplement undo and redo of contenteditable
+        regions as well because the user agent typically has one <a>undo history</a> per document,
+        and there is no easy way to add new undo entry to the user agent's native <a>undo history</a>.
+      </p>
+      <p>
+        This specification tries to address above issues by providing ways to define <a>undo scopes</a>,
+        add items to user agent's native <a>undo history</a>, and create a sequence of DOM changes
+        that can be automatically undone or redone by user agents.
+      </p>
+      <div class="note">
+        <p>
+          Much of this introduction was copy & pasted from
+          <a href="https://dvcs.w3.org/hg/undomanager/raw-file/tip/undomanager.html">Undo Manager and DOM transaction</a>.
+        </p>
+      </div>
+    </section>
+    <section>
+      <h2>
+        Definition
+      </h2>
+      <p>
+        An <dfn>undo history</dfn> is an ordered list of <dfn>undo items</dfn>,
+        which represents an <dfn>reversible user interaction</dfn> which can be undone or redone
+        such as editing of text in an <a href="https://w3c.github.io/editing/execCommand.html#editing-host">editing host</a>.
+
+        Each <a>undo history</a> has an <dfn>undo position</dfn>, which indicates a location between
+        two <a>undo items</a> in the <a>undo history</a>, and <dfn>currently executing undo or redo flag</dfn>,
+        which is a boolean flag initially set to false, indicating whether there is an on-going undo or redo operation.
+
+        The user agent uses the <a>undo action</a> of the <a>undo item</a> immediately succeeding the <a>undo position</a>
+        to undo the last <a>reversible user interaction</a>, and uses the <a>redo action</a> of the <a>undo item</a>
+        immediately preceeding the <a>undo position</a> to redo the first <a>reversible user interaction</a>.
+      </p>
+      <div class="note">
+        <p>An alternative design is to undo stack and redo stack as two different list,
+          and move <a>undo item</a> whenever it's undone / redone.</p>
+      </div>
+      <p>
+        Each <a>undo item</a> has a <dfn>undo label</dfn>, which is a human readable description
+        of the <a>reversible user interaction</a>, <dfn>undo action</dfn>, and <dfn>redo action</dfn>.
+
+        Each <a>undo item</a> also has a <dfn>merged</dfn> flag, which is initally set to false,
+        and indicates whether the <a>undo item</a> should be grouped together with the succeeding <a>undo item</a>
+        when <a>triggering undo</a> or <a>triggering redo</a>.
+      </p>
+      <p>
+        An <dfn>undo scope</dfn> defines a set of DOM <a>nodes</a> associated with a unique <a>undo history</a>.
+
+        A <a>document</a> whose <a>browsing context</a> is a <a>top-level browsing context</a>
+        must be in an unique <a>undo scope</a>, which is not associated with any other <a>document</a>
+        whose <a>browsing context</a> is a <a>top-level browsing context</a>.
+
+        A <a>document</a> whose <a>browsing context</a> is a <a>nested browsing context</a>
+        may have an unique <a>undo scope</a>, which is not associated with the <a>document</a>
+        of its <a>top-level browsing context</a> in accordance with the platform convention.
+      </p>
+      <div class="note">
+        <p>
+          The user agent may decide to have a separate <a>undo history</a> per frame.
+          For this proposal allows WebKit's behavior,
+          which is to have a single <a>undo history</a> for all browsing contexts under a single top-level browsing context.
+        </p>
+      </div>
+    </section>
+
+    <section data-dfn-for="UndoItem">
+      <h2>UndoItem interface</h2>
+      <p>
+        <dfn>UndoItem</dfn> interface represents an <a>undo item</a>.
+        Each <a>UndoItem</a> has optional <dfn>undo callback</dfn> and optional <dfn>redo callback</dfn>.
+      </p>
+      <pre class="idl">
+        [
+          Exposed=Window
+        ] interface UndoItem {
+          constructor(UndoItemInit initDict);
+          readonly attribute DOMString label;
+          readonly attribute boolean merged;
+        };
+
+        callback UndoItemCallback = void (); // FIXME: Use VoidFunction but WebIDL doesn't export it.
+
+        dictionary UndoItemInit {
+          required DOMString label;
+          boolean merged = false;
+          UndoItemCallback undo = null;
+          UndoItemCallback redo = null;
+        };
+      </pre>
+
+      <p>The <dfn constructor for="UndoItem"><code>UndoItem(<var>initDict</var>)</code></dfn>
+      constructor, when invoked, must run these steps:
+      <ol>
+        <li><p>Let <var>item</var> be a new {{UndoItem}} object.</p></li>
+        <li><p>Set the <a>undo label</a> of <a>undo item</a>
+          defined by <var>item</var> to {{UndoItemInit/label}}.</p></li>
+        <li><p>Set the <a>merged</a> flag of <a>undo item</a>
+          defined by <var>item</var> to {{UndoItemInit/merged}}.</p></li>
+        <li><p>Set the <a>undo callback</a> of <var>item</var> to {{UndoItemInit/undo}} if it's not null.</p></li>
+        <li><p>Set the <a>redo callback</a> of <var>item</var> to {{UndoItemInit/redo}} if it's not null.</p></li>
+        <li><p>Return <var>item</var>.</p></li>
+      </ol>
+
+      <p>The <dfn attribute for="UndoItem"><code>label</code></dfn> attribute's getter must return
+        the <a>undo label</a> of the <a>undo item</a> represented by <a>context object</a>.</p>
+
+      <p>The <dfn attribute for="UndoItem"><code>merged</code></dfn> attribute's getter must return
+        the <a>merged</a> flag of the <a>undo item</a> represented by <a>context object</a>.</p>
+
+      <p>When an <a>UndoItem</a>'s <a>undo callback</a> is not null,
+        the <a>undo action</a> of the represented <a>undo item</a> must <a spec="webidl">invoke</a> the <a>undo callback</a>.</p>
+
+      <p>Similarly, when an <a>UndoItem</a>'s <a>redo callback</a> is not null,
+        the <a>redo action</a> of the represented <a>undo item</a> must <a spec="webidl">invoke</a> the <a>redo callback</a>.</p>
+
+    </section>
+
+    <section data-dfn-for="UndoManager">
+      <h2>UndoManager interface</h2>
+      <p>
+        <dfn>UndoManager</dfn> interface provides a mechanism to query and manipulate <a>undo history</a>.
+        Each <a>UndoManager</a> has an associated <a data-cite="dom#node">node</a>.
+      </p>
+      <pre class="idl">
+        [
+          Exposed=Window
+        ] interface UndoManager {
+          void undo();
+          void redo();
+          void clearUndo();
+          void clearRedo();
+          void addItem(UndoItem item);
+          void removeItem(unsigned long index);
+          UndoItem item(unsigned long index);
+          readonly attribute unsigned long length;
+          readonly attribute unsigned long position;
+        };
+      </pre>
+
+      <p>The <dfn method for="UndoManager"><code>undo()</code></dfn> method, when invoked, must run these steps:</p>
+      <ol>
+        <li><p>Let <var>history</var> be the <a>undo history</a> represented by <a>context object</a>.</p></li>
+        <li><p>If <a>currently executing undo or redo flag</a> of <var>history</var> is true,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p><a>Trigger undo</a> on <var>history</var>.</li>
+      </ol>
+
+      <p>The <dfn method for="UndoManager"><code>redo()</code></dfn> method, when invoked, must run these steps:</p>
+      <ol>
+        <li><p>Let <var>history</var> be the <a>undo history</a> represented by <a>context object</a>.</p></li>
+        <li><p>If <a>currently executing undo or redo flag</a> of <var>history</var> is true,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p><a>Trigger redo</a> on <var>history</var>.</li>
+      </ol>
+
+      <p>The <dfn method for="UndoManager"><code>clearUndo()</code></dfn> method, when invoked, must run these steps:</p>
+      <ol>
+        <li><p>Let <var>history</var> be the <a>undo history</a> represented by <a>context object</a>.</p></li>
+        <li><p>If <a>currently executing undo or redo flag</a> of <var>history</var> is true,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p><a>Clear undo items</a> on <var>history</var>.</li>
+      </ol>
+
+      <p>The <dfn method for="UndoManager"><code>clearRedo()</code></dfn> method, when invoked, must run these steps:</p>
+      <ol>
+        <li><p>Let <var>history</var> be the <a>undo history</a> represented by <a>context object</a>.</p></li>
+        <li><p>If <a>currently executing undo or redo flag</a> of <var>history</var> is true,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p><a>Clear redo items</a> on <var>history</var>.</li>
+      </ol>
+
+      <p>The <dfn method for="UndoManager"><code>addItem()</code></dfn> method, when invoked, must run these steps:</p>
+      <ol>
+        <li><p>If the <a>undo item</a> represented by <var>item</var> is already in any <a>undo history</a>,
+          <a data-cite="webidl#throw">throw</a> {{InvalidModificationError}}.</p></li>
+        <li><p>Let <var>history</var> be the <a>undo history</a> represented by <a>context object</a>.</p></li>
+        <li><p>If <a>currently executing undo or redo flag</a> of <var>history</var> is true,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p>If the <a>merged</a> flag of the <a>undo item</a> represented by <var>item</var> is set,
+          and <var>history</var> does not have any <a>undo item</a> after its <a>undo position</a>,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p>If the <a>browsing context</a> of the <a data-cite="dom#node-document">node document</a> of
+          <a>context object</a>'s <a data-cite="dom#node">node</a> is null,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p><a>Clear redo items</a> on <var>hisotry</var> represented by <var>undoManager</var>.</p></li>
+        <li><p><a>Insert undo item</a> <var>item</var> to <var>history</var>.</p></li>
+      </ol>
+
+      <div class="note">
+        <p>We currently allow an <a><code>UndoItem</code></a> which was once inserted into an undo manager
+          but later removed to another undo manager. We should consider adding a used flag, which is initally false
+          and set to true whenever <a><code>UndoItem</code></a> is inserted to an <a><code>UndoManager</code></a>
+          and exiting early here.</p>
+      </div>
+
+      <p>The <dfn method for="UndoManager"><code>removeItem()</code></dfn> method, when invoked, must run these steps:</p>
+      <ol>
+        <li><p>Let <var>history</var> be the <a>undo history</a> represented by <a>context object</a>.</p></li>
+        <li><p>If <a>currently executing undo or redo flag</a> of <var>history</var> is true,
+          <a data-cite="webidl#throw">throw</a> {{InvalidStateError}}.</p></li>
+        <li><p>If <var>item</var> is greater than the number of <a>undo items</a> in <var>history</var>,
+          <a data-cite="webidl#throw">throw</a> {{IndexSizeError}}.</p></li>
+        <li>
+          <p>While <var>item</var> is greater than 0,
+            and the <a>undo item</a> at <var>item</var> has its <a>merged</a> flag set,</p>
+          <ol>
+            <li><p>Decrement <var>item</var> by 1.</p></li>
+          </ol>
+        </li>
+        <li><p>Let <var>done</var> be a boolean flag, initially set to false.</p>
+        <li>
+          <p>While <var>done</var> is false:</p>
+          <ol>
+            <li><p>If <a>undo position</a> of <var>history</var> is greater than <var>item</var>,
+              decrement <a>undo position</a> by 1.</p></li>
+            <li><p>If <a>undo item</a> at <var>item</var> in <var>history</var> has <a>merged</a> flag unset,
+              set <var>done</var> to true.</p></li>
+            <li><p>Remove <a>undo item</a> at <var>item</var> from <var>history</var>.</p></li>
+          </ol>
+        </li>
+      </ol>
+
+      <div class="note">
+        <p><code>removeItem()</code> would currently remove any undo item currently merged with
+          the one being requeste to be removed.</p>
+      </div>
+
+      <p>The <dfn method for="UndoManager"><code>item()</code></dfn> method, when invoked, must run these steps:</p>
+      <ol>
+        <li><p>Let <var>history</var> be the <a>undo history</a> represented by <a>context object</a>.</p></li>
+        <li><p>If <var>item</var> is greater than the number of <a>undo items</a> in <var>history</var>,
+          return null and abort these steps.</p></li>
+        <li><p>Otherwise, return the <a>undo item</a> at <var>item</var>.</p></li>
+      </ol>
+
+      <p>The <dfn attribute for="UndoManager"><code>length</code></dfn> attribute's getter must return
+        the number of <a>undo items</a> in the <a>undo history</a> represented by <a>context object</a>.</p>
+
+      <p>The <dfn attribute for="UndoManager"><code>position</code></dfn> attribute's getter must return
+        the <a>undo position</a> of the <a>undo history</a> represented by <a>context object</a>.</p>
+    </section>
+
+    <section id="element-extensions">
+      <h2>Extensions to the <code>Element</code> interface</h2>
+
+      <pre class=idl data-cite="dom">
+        partial interface Element {
+          readonly attribute UndoManager undoManager;
+          [CEReactions] attribute boolean undoScope;
+        };
+      </pre>
+
+      <p>Each <a>element</a> is optionally associated with an <a>UndoManager</a>. It is initially null.</p>
+
+      <p>The <dfn attribute data-dfn-for="Element"><code>undoManager</code></dfn> attribute's getter must return
+        the <a>UndoManager</a> associated with the <a>context object</a> if there is one. Otherwise it must return null.</p>
+
+      <p>The <dfn attribute data-dfn-for="Element"><code>undoScope</code></dfn> attribute
+        must <a href="dom#reflect">reflect</a> the "undoscope" content attribute.</p>
+
+      <p>"undoscope" is a <a data-cite="html#boolean-attribute">boolean attribute</a>. When it is set on an <a>element</a>,
+        the <a>element</a> defines an unique <a>undo scope</a>.</p>
+
+      <p>When <a>element</a>'s "undoscope" content attribute changes,
+        the user agent must run the following steps in <a data-cite="dom#attribute-change-steps">attribute change steps</a>:</p>
+      <ol>
+        <li><p>If <var>oldValue</var> is null and <var>value</var> is not null,
+          <a>try to associate a new undo manager</a> with <var>element</var>.</p>
+        </li>
+        <li><p>If <var>oldValue</var> is not null and <var>value</var> is null,
+          <a>disassociate the undo manager</a> of <var>element</var>.</p></li>
+      </ol>
+
+      <p>The user agent must <a>disassociate the undo manager</a> of <var>element</var> in
+        <a data-cite="dom#node-remove-ext">removing steps</a> for an <a>element</a>.</p>
+
+      <div class="note">
+        <p>The practical implication of always running this algorithm whenever a node is removed is that
+          the undo manager is cleared & removed whenever a node is disconnected.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Processing Model</h2>
+
+      <p>The <a>undo scope</a> of a <a data-cite="dom#node">node</a> <var>node</var> is defined
+        by the result of running these steps:</p>
+      <ol>
+        <li><p>If <var>node</var> is not <a>connected</a>, abort these steps and return null.</p></li>
+        <li><p>Let <var>doc<var> be the <var>node</var>'s <a data-cite="dom#node-document">node document</a>.</p></li>
+        <li><p>If the <a>browsing context</a> of <var>doc</var> is null, abort these steps and return null.</p></li>
+        <li><p>Let <var>ancestorNodes</var> be <var>node</var>'s <a>shadow-including inclusive ancestor</a>
+          in reverse <a>tree order</a>.</p></li>
+        <li><p>For each <var>ancestor</var> in <var>ancestorNodes</var>:</p>
+          <ol>
+            <li><p>If <var>ancestor</var> is not an <a>element</a>, then continue.</p></li>
+            <li><p>Let <var>manager</var> be the <a>UndoManager</a> associated with <var>ancestor</var>.</p></li>
+            <li><p>If <var>manager</var> is not null, abort these steps
+              and return the <a>undo scope</a> of <var>ancestor</var>.</p></li>
+          </ol>
+        </li>
+        <li><p>Return the <a>undo scope</a> of <var>doc</var>.</p></li>
+
+      </ol>
+
+      <section>
+        <h3>Manipuating Undo History</h3>
+
+        <p>To <dfn>clear undo items</dfn> on an <a>undo history</a> <var>history</var>, run these steps:</p>
+        <ol>
+          <li><p>Remove every <a>undo item</a> after the <a>undo position</a> of <var>history</var>.</p></li>
+        </ol>
+
+        <p>To <dfn>clear redo items</dfn> on an <a>undo history</a> <var>history</var>, run these steps:</p>
+        <ol>
+          <li><p>Let <var>position</var> be the <a>undo position</a> of <var>history</var>.</p></li>
+          <li><p>Remove every <a>undo item</a> before <var>position</var> in <var>history</var>.</p></li>
+          <li><p>Set the <a>undo position</a> of <var>history</var> to 0.</p></li>
+        </ol>
+
+        <p>To <dfn>insert undo item</dfn> <var>item</var> to an <a>undo history</a> <var>history</var>, run these steps:</p>
+        <ol>
+          <li><p><a>Clear redo items</a> of <var>history</var>.</p></li>
+          <li><p>Insert <var>item</var> to the begnning of <var>history</var>.</p></li>
+        </ol>
+
+        <p>The user agent may <a>clear undo items</a> or <a>clear redo items</a> of the <a>undo history</a>
+          associated with the <a>undo scope</a> of a <a>top-level browsing context</a>
+          or the <a>undo scope</a> of the <a data-cite="html#currently-focused-area-of-a-top-level-browsing-context">
+            currently focused area of a top-level browsing context</a> whenever deemed necessary
+          to user agent's user interface or to match the platform convention if the <a>undo scope</a> is not null.</p>
+      </section>
+
+      <section>
+        <h3>Undo items created by user agents</h3>
+
+        <p>When the user manipulates the states of <a><code>input</code></a>, <a><code>textarea</code></a>,
+          <a><code>select</code></a>, and <a><code>details</code></a> elements,
+          or elements that are <a href="https://w3c.github.io/editing/execCommand.html#editable">editable</a>,
+          the user agent should <a>insert undo item</a> a new <a>undo item</a> representing the manipulation
+          to the <a>undo history</a> associated with the <a>undo scope</a> of the manipulated elements
+          if the <a>undo scope</a> is not null.
+
+          The <a>undo action</a> of such an <a>undo item</a> is to undo the manipulation,
+          and the <a>undo action</a> is to reapply the same manipulation.</p>
+      </section>
+
+      <section>
+        <h3>Triggering Undo and Redo</h3>
+
+        <p>To <dfn data-lt="triggering undo">trigger undo</dfn> on an <a>undo history</a> <var>history</var>,
+          run these steps:</p>
+        <ol>
+          <li><p>Set <a>currently executing undo or redo flag</a> of <var>history</var> to true.</p></p>
+          <li><p>Let <var>done</var> be a boolean flag, initially set to false.</p></li>
+          <li><p>While <var>done</var> is false:</p>
+            <ol>
+              <li><p>If <var>history</var> does not contain any <a>undo item</a> after the <a>undo position</a>,
+                set <var>done <var> to true.</p></li>
+              <li><p>Otherwise,</p>
+                <ol>
+                  <li><p>Let <var>item</var> be the first item after the <a>undo position</a> in <var>history</var>.</p></li>
+                  <li><p>If the <a>merged</a> flag of <var>item</var> is not set, set <var>done</var> to true.</p></li>
+                  <li><p>Execute the <a>undo action</a> of <var>item</var>.</p></li>
+                  <li><p>Increment the <a>undo position</a> of <var>history</var> by 1.</p></li>
+                </ol>
+              </li>
+            </ol>
+          </li>
+          <li><p>Set <a>currently executing undo or redo flag</a> of <var>history</var> to false.</p></p>
+        </ol>
+
+        <p>To <dfn data-lt="triggering redo">trigger redo</dfn> on an <a>undo history</a> <var>history</var>,
+          run these steps:</p>
+        <ol>
+          <li><p>Set <a>currently executing undo or redo flag</a> of <var>history</var> to true.</p></p>
+          <li><p>Let <var>done</var> be a boolean flag, initially set to false.</p></li>
+          <li><p>While <var>done</var> is false:</p>
+            <ol>
+              <li><p>If <var>history</var> does not contain any <a>undo item</a> before the <a>undo position</a>,
+                set <var>done <var> to true.</p></li>
+              <li><p>Otherwise,</p>
+                <ol>
+                  <li><p>Let <var>item</var> be the last item before the <a>undo position</a> in <var>history</var>.</p></li>
+                  <li><p>If the <a>merged</a> flag of <var>item</var> is not set, set <var>done</var> to true.</p></li>
+                  <li><p><em>Otherwise</em>,</p>
+                    <ol>
+                      <li><p>Execute the <a>redo action</a> of <var>item</var>.</p></li>
+                      <li><p>Decrement the <a>undo position</a> of <var>history</var> by 1.</p></li>
+                    </ol>
+                  </li>
+                </ol>
+                <div class="note">
+                  <p>Otherwise clause above is important. Unlike <a>triggering undo</a>,
+                    <a>triggering redo</a> has to stop when the previous <a>undo item</a> has the <a>merged</a> flag set.</p>
+                </div>
+              </li>
+            </ol>
+          </li>
+          <li><p>Set <a>currently executing undo or redo flag</a> of <var>history</var> to false.</p></p>
+        </ol>
+
+        <p>When the user indicates to the user agent that the last <a>reversible user interaction</a> should be undone,
+        the user agent must <a>trigger undo</a> on the <a>undo history</a> associated with the <a>undo scope</a> of
+        the <a data-cite="html#currently-focused-area-of-a-top-level-browsing-context">
+          currently focused area of a top-level browsing context</a>
+        if <a>currently executing undo or redo flag</a> of the <a>undo history</a> is false.</p>
+
+        <p>When the user indicates to the user agent that
+          the last previously undone <a>reversible user interaction</a> should be redone,
+          the user agent must <a>trigger redo</a> on the <a>undo history</a> associated with the <a>undo scope</a> of
+          the <a data-cite="html#currently-focused-area-of-a-top-level-browsing-context">
+            currently focused area of a top-level browsing context</a>
+          if <a>currently executing undo or redo flag</a> of the <a>undo history</a> is false.</p>
+      </section>
+
+      <section>
+        <h3>Manipulating undo manager</h3>
+
+        <p>To <dfn>try to associate a new undo manager</dfn> with <var>element</var>, run these steps:</p>
+        <ol>
+          <li><p>If <var>element</var> is not <a>connected</a>, abort these steps.</p></li>
+          <li><p>If <var>element</var> is <a href="https://w3c.github.io/editing/execCommand.html#editable">edtiable</a>,
+            abort these steps.</p></li>
+          <li><p>If the <a>browsing context</a> of <var>element</var>'s <a data-cite="dom#node-document">node document</a>
+            is null, abort these steps.</p></li>
+          <li><p>Let <var>manager</var> be a new <a>UndoManager</a> representing a new <a>undo history</a>.</p></li>
+          <li><p>Associate the <var>element</var> with <var>manager</var>.</p></li>
+        </ol>
+
+        <p>To <dfn>disassociate the undo manager</dfn> of <var>element</var>,
+          run these steps:</p>
+        <ol>
+          <li><p>Let <var>manager</var> be the <var>element</var>'s associated <a>UndoManager</a>.</p></li>
+          <li><p>If <var>manager</var> is null, abort these steps.</p></li>
+          <li><p>Otherwise, <a>clear redo items</a> and <a>clear undo items</a>
+            on the <a>undo history</a> represented by <var>undoManager</var>.</p></li>
+          <li><p>Set the <var>element</var>'s associated <a>UndoManager</a> to null.</p></li>
+        </ol>
+      </section>
+
+    </section>
+
+    <section class="appendix">
+      <h2>
+        Acknowledgements
+      </h2>
+      <p>
+        Special thanks to
+      </p>
+      <ul>
+        Anne van Kesteren,
+        Annie Sullivan,
+        Alex Russell,
+        Alex Vincent,
+        Aryeh Gregor,
+        Caio Marcelo de Oliveira Filho,
+        Ehsan Akhgari,
+        Eric Uhrhane,
+        Frederico Caldeira Knabben,
+        Ian Hickson, Johan "Spocke" Sörlin,
+        Jonas Sicking,
+        Megan Gardner,
+        Ojan Vafai,
+        Olli Pettay,
+        Rakesh Chaitanya KN,
+        Ryosuke Niwa (Google),
+        Sukolsak Sakshuwong,
+        Wenson Hsieh
+        </li>
+      </ul>
+    </section>
+  </body>
+</html>
