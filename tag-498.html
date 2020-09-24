@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+    body {
+        margin: 0;
+        font-family: sans-serif;
+        font-size: 40px;
+    }
+    .top, .bottom {
+        position: fixed;
+        width: 100vw;
+        padding: 20px;
+
+        display: grid;
+        place-items: center;
+    }
+    .top {
+        top: 0;
+        background-color: blue;
+    }
+    .bottom {
+        bottom: 0;
+        background-color: green;
+    }
+    input[type=text] {
+        font-family: sans-serif;
+        font-size: 40px;
+        padding: 10px; 
+    }
+</style>
+<div class="top">TOP FIXED</div>
+<div class="bottom">BOTTOM FIXED <input type="text" placeholder="put focus here..."></div>
