@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+<body>
+<script>
+
+const iframe = document.createElement('iframe');
+document.body.appendChild(iframe);
+iframe.contentWindow.addEventListener('pageshow', (event) => {
+    alert(event.target == iframe.contentDocument);
+});
+
+</script>
+</body>
+</html>
