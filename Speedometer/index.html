@@ -2,6 +2,7 @@
 <html>
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <meta name="viewport" content="width=850" />
         <title>Speedometer 3.0</title>
         <link rel="stylesheet" href="resources/main.css" />
         <link rel="icon" href="resources/favicon.png" />
@@ -74,7 +75,7 @@
                     <div class="section-content all-metric-results">
                         <div class="aggregated-metric-result">
                             <h2>Geomean</h2>
-                            <div id="total-chart"></div>
+                            <div id="geomean-chart"></div>
                             <h2>Tests</h2>
                             <div id="tests-chart"></div>
                         </div>
@@ -88,8 +89,9 @@
                             <a class="button" href="#summary" title="Go back to the simplified summary view.">Summary</a>
                         </div>
                         <div class="button-row export-buttons">
-                            <a class="button" id="download-json" title="Download all result metrics as json string.">Download JSON</a>
-                            <button id="copy-json" title="Copy all result metrics as json string.">Copy JSON</button>
+                            <button id="copy-full-json" title="Copy full result metrics as json string.">Copy JSON</button>
+                            <a class="button" id="download-full-json" title="Download full result metrics as json string.">Download JSON</a>
+                            <a class="button" id="download-classic-json" title="Download backwards-compatible result metrics as json string.">Download Classic JSON</a>
                             <a class="button" id="download-csv" title="Download all result metrics as CSV string.">Download CSV</a>
                             <button id="copy-csv" title="Copy all result metrics as CSV string.">Copy CSV</button>
                         </div>
