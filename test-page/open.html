@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<body>
+<button onclick="openWindow()">Open</button>
+<script>
+
+function openWindow() {
+    let w = window.open('', 'namedWindow', 'fullscreen=yes,resizable=yes,scrollbars=yes,status=yes,toolbar=no,location=no,titlebar=yes');
+    w.window.blur();
+    if (w.location.href == 'about:blank')
+      w.location.href = 'login.html';
+    else
+      window.open('error.html', 'realError');
+}
+
+</script>
+</body>
+</html>
